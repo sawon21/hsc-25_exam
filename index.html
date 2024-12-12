@@ -199,8 +199,204 @@
         </div>
     </div>
 
-    <script type="module" src="app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+        import { getDatabase, ref, set, push, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCE5aliCVhZIps60it6F52LtpVyRCyeIsE",
+            authDomain: "bd-train-e69b0.firebaseapp.com",
+            databaseURL: "https://bd-train-e69b0-default-rtdb.firebaseio.com",
+            projectId: "bd-train-e69b0",
+            storageBucket: "bd-train-e69b0.appspot.com",
+            messagingSenderId: "15363398567",
+            appId: "1:15363398567:web:653119f2014b7506267482",
+            measurementId: "G-T8VK7ZGHV1"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // DOM elements
+        const roomSection = document.getElementById("room-section");
+        const chatSection = document.getElementById("chat-section");
+        const messagesDiv = document.getElementById("messages");
+        const chatForm = document.getElementById("chat-form");
+        const messageInput = document.getElementById("message");
+        const usernameInput = document.getElementById("username");
+        const partnerInput = document.getElementById("partner");
+        const toggleDarkModeBtn = document.getElementById("toggle-dark-mode");
+        const createRoomBtn = document.getElementById("create-room");
+        const joinRoomBtn = document.getElementById("join-room");
+        const btnBack = document.getElementById("btn-back");
+        const chatTitle = document.getElementById("chat-title");
+        const deleteRoomBtn = document.getElementById("delete-room");
+        const noticeDiv = document.getElementById("notice");
+
+        // Variables
+        let currentRoom = null;
+        let isDarkMode = false;
+
+        // Display Notice
+        function showNotice(message) {
+            noticeDiv.textContent = message;
+            noticeDiv.style.display = 'block';
+            setTimeout(() => {
+                noticeDiv.style.display = 'none';
+            }, 3000);  // Hide notice after 3 seconds
+        }
+
+  // Room creation logic
+    createRoomBtn.addEventListener("click", () => {
+        const username = usernameInput.value.trim();
+        const partner = prompt("Enter partner's username:");
+
+        if (!username || !partner) {
+            showNotice("Please enter both your username and your partner's username!");
+            return;
+        }
+
+        // Generate unique room ID using usernames and timestamp
+        const timestamp = new Date().getTime(); // Get current timestamp
+        const roomId = `${username}-${partner}-${timestamp}`;
+
+        const roomRef = ref(db, `rooms/${roomId}`);
+
+        // Create room in Firebase with usernames and timestamp in room ID
+        set(roomRef, {
+            users: [username, partner],
+            messages: [],
+            createdAt: timestamp
+        }).then(() => {
+            currentRoom = roomId;
+            roomSection.style.display = 'none';
+            chatSection.style.display = 'block';
+            chatTitle.textContent = `Room: ${roomId}`;
+            btnBack.classList.remove('d-none');
+            fetchMessages(roomId);  // Fetch existing messages in the room
+        }).catch((error) => {
+            showNotice("Error creating room. Please try again.");
+            console.error("Error creating room:", error);
+        });
+    });
+
+
+        // Join Room
+        joinRoomBtn.addEventListener("click", () => {
+            const roomId = prompt("Enter room ID to join:");
+
+            if (!roomId) {
+                showNotice("Please enter a room ID!");
+                return;
+            }
+
+            const roomRef = ref(db, `rooms/${roomId}`);
+            onValue(roomRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    currentRoom = roomId;
+                    roomSection.style.display = 'none';
+                    chatSection.style.display = 'block';
+                    chatTitle.textContent = `Room: ${roomId}`;
+                    btnBack.classList.remove('d-none');
+                    fetchMessages(roomId);  // Fetch existing messages in the room
+                } else {
+                    showNotice("Room not found. Please try again.");
+                }
+            });
+        });
+
+        // Back to room creation screen
+        btnBack.addEventListener("click", () => {
+            roomSection.style.display = 'block';
+            chatSection.style.display = 'none';
+            btnBack.classList.add('d-none');
+        });
+
+        // Send message
+        chatForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const messageText = messageInput.value.trim();
+            if (!messageText) {
+                return;
+            }
+
+            const messageId = push(ref(db, `rooms/${currentRoom}/messages`)).key;
+            const messageRef = ref(db, `rooms/${currentRoom}/messages/${messageId}`);
+            const username = usernameInput.value.trim();
+
+            set(messageRef, {
+                user: username,
+                text: messageText,
+                timestamp: new Date().toISOString()
+            }).then(() => {
+                messageInput.value = '';  // Clear message input field
+            }).catch((error) => {
+                showNotice("Error sending message. Please try again.");
+                console.error("Error sending message:", error);
+            });
+        });
+
+        // Fetch messages
+        function fetchMessages(roomId) {
+            const messagesRef = ref(db, `rooms/${roomId}/messages`);
+            onValue(messagesRef, (snapshot) => {
+                messagesDiv.innerHTML = '';  // Clear previous messages
+                snapshot.forEach((childSnapshot) => {
+                    const message = childSnapshot.val();
+                    displayMessage(message);
+                });
+            });
+        }
+
+        // Display message
+        function displayMessage(message) {
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add('chat-message', 'received');
+            messageDiv.innerHTML = `
+                <div class="avatar">${message.user.charAt(0).toUpperCase()}</div>
+                <div class="content">
+                    <strong>${message.user}</strong><br>
+                    ${message.text}
+                </div>
+            `;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;  // Scroll to bottom
+        }
+
+        // Delete room
+        deleteRoomBtn.addEventListener("click", () => {
+            if (!currentRoom) {
+                showNotice("No room to delete.");
+                return;
+            }
+
+            const roomRef = ref(db, `rooms/${currentRoom}`);
+            remove(roomRef).then(() => {
+                showNotice("Room deleted successfully.");
+                roomSection.style.display = 'block';
+                chatSection.style.display = 'none';
+                btnBack.classList.add('d-none');
+            }).catch((error) => {
+                showNotice("Error deleting room. Please try again.");
+                console.error("Error deleting room:", error);
+            });
+        });
+
+        // Toggle Dark Mode
+        toggleDarkModeBtn.addEventListener("click", () => {
+            document.body.classList.toggle('dark-mode');
+            isDarkMode = !isDarkMode;
+            toggleDarkModeBtn.innerHTML = isDarkMode ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon"></i>';
+        });
+
+        // Generate Room ID based on users' names
+        function generateRoomId(user1, user2) {
+            const sortedNames = [user1, user2].sort();
+            return sortedNames.join('-');
+        }
+    </script>
 </body>
 
 </html>
